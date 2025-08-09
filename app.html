@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>店内商品検索</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+        }
+
+        #main-container {
+            display: flex;
+            gap: 20px;
+        }
+
+        #left-panel {
+            flex: 1;
+        }
+
+        #right-panel {
+            width: 300px;
+            border: 2px solid #17a2b8;
+            background-color: #f0f8ff;
+            padding: 15px;
+        }
+
+        #search-area {
+            margin-bottom: 15px;
+        }
+
+        #search-input {
+            padding: 8px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        #search-button {
+            padding: 8px 12px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        #export-csv-btn {
+            padding: 8px 12px;
+            font-size: 16px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        #map-wrapper {
+            border: 2px solid #ccc;
+            padding: 10px;
+            height: 600px;
+        }
+
+        #map-wrapper svg {
+            width: 100%;
+            height: 100%;
+            cursor: default;
+        }
+
+        .highlight-search-animation {
+            animation: blink-animation 1.2s infinite;
+        }
+
+        @keyframes blink-animation {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
+        }
+
+        .gaming-mode-animation {
+            animation-name: rainbow-animation;
+            animation-duration: 3s;
+            animation-iteration-count: infinite;
+        }
+
+        @keyframes rainbow-animation {
+
+            0%,
+            100% {
+                fill: red;
+            }
+
+            16% {
+                fill: orange;
+            }
+
+            33% {
+                fill: yellow;
+            }
+
+            50% {
+                fill: lime;
+            }
+
+            66% {
+                fill: cyan;
+            }
+
+            83% {
+                fill: blue;
+            }
+        }
+
+        #product-list li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .delete-btn {
+            cursor: pointer;
+            color: red;
+        }
+
+        #status-area {
+            margin-top: 15px;
+            margin-bottom: 15px;
+            padding: 10px;
+            border: 1px dashed #ccc;
+            text-align: center;
+        }
+
+        #toggle-status-btn {
+            padding: 8px;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        #shelf-status {
+            font-weight: bold;
+            color: green;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>店内商品検索</h1>
+    <div id="main-container">
+        <div id="left-panel">
+            <div id="search-area">
+                <input type="text" id="search-input" placeholder="商品名を入力">
+                <button id="search-button">検索</button>
+            </div>
+            <div id="map-wrapper"></div>
+            <div id="mobile-zoom-controls" style="display: none; margin-top: 10px; text-align: center;">
+                <button onclick="zoomInMap()" style="padding: 10px 20px; font-size: 1.2em;">拡大</button>
+                <button onclick="zoomOutMap()"
+                    style="padding: 10px 20px; font-size: 1.2em; margin-left: 10px;">縮小</button>
+                <button onclick="resetZoomMap()"
+                    style="padding: 10px 20px; font-size: 1.2em; margin-left: 10px;">リセット</button>
+            </div>
+        </div>
+        <div id="right-panel">
+            <h2>情報パネル</h2>
+            <div id="info-area">
+                <p>アプリを起動しています...</p>
+            </div>
+            <button id="export-csv-btn">全データをCSVで保存</button>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyB2RWsPZwb9ZukbF8ijP9A_F3czf_q05-0",
+            authDomain: "map-app-1b118.firebaseapp.com",
+            projectId: "map-app-1b118",
+            storageBucket: "map-app-1b118.firebasestorage.app",
+            messagingSenderId: "875757738307",
+            appId: "1:875757738307:web:00865ef8281907b8e037f6"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+        const svgFileName = 'AllStoreMap.svg';
+        let svg = null;
+        let productLocationDatabase = {};
+        const shelfMasterData = {
+            'dry': { displayName: 'お菓子・飲料・食材' }, 'delica': { displayName: 'お惣菜' },
+            'veg': { displayName: '野菜' }, 'dailyWa': { displayName: '日配品(和)' },
+            'daylyEu': { displayName: '日配品(洋)' }, 'meat': { displayName: 'お肉' },
+            'fish': { displayName: 'お魚' }, 'med': { displayName: '薬品' },
+            'bread': { displayName: 'パン' }, 'froz': { displayName: '冷凍食品' },
+            'combat': { displayName: '殺虫剤・日用品' }, 'garden': { displayName: '園芸用品' },
+            'book': { displayName: '書籍' }
+        };
+        const shelfPrefixes = Object.keys(shelfMasterData);
+        const shelfSelector = shelfPrefixes.map(p => `[id^="${p}_"]`).join(', ');
+
+        let appState = {
+            shelvesData: new Map(),
+            selectedShelfId: null,
+            searchedShelfId: null,
+            isGamingMode: false
+        };
+
+        const log = (message) => { document.getElementById('info-area').innerHTML = `<p>${message}</p>`; };
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await initializeApp();
+            document.getElementById('export-csv-btn').addEventListener('click', exportAllDataToCsv);
+        });
+
+        async function initializeApp() {
+            try {
+                await auth.signInAnonymously();
+                const mapWrapper = document.getElementById('map-wrapper');
+                const response = await fetch(svgFileName);
+                if (!response.ok) throw new Error(`マップファイル(${svgFileName})が見つかりません。`);
+                mapWrapper.innerHTML = await response.text();
+                svg = mapWrapper.querySelector('svg');
+                if (!svg) throw new Error('SVGタグが見つかりませんでした。');
+
+                setupRealtimeListeners();
+                setupMapClickListener();
+
+                document.getElementById('search-button').addEventListener('click', performSearch);
+                document.getElementById('search-input').addEventListener('keyup', (e) => {
+                    if (e.key === 'Enter') performSearch();
+                });
+            } catch (error) {
+                log(`初期化エラー: ${error.message}`);
+            }
+        }
+
+        function setupRealtimeListeners() {
+            db.collection('shelves').onSnapshot(snapshot => {
+                productLocationDatabase = {};
+                snapshot.forEach(doc => {
+                    appState.shelvesData.set(doc.id, doc.data());
+                    const data = doc.data();
+                    if (data.products && Array.isArray(data.products)) {
+                        data.products.forEach(productName => {
+                            productLocationDatabase[productName] = doc.id;
+                        });
+                    }
+                });
+                redrawMapColors();
+                log('準備完了！');
+            });
+        }
+
+        function redrawMapColors() {
+            if (!svg) return;
+            const allShelves = svg.querySelectorAll(shelfSelector);
+
+            allShelves.forEach(shelf => {
+                const shelfId = shelf.id;
+                const shelfData = appState.shelvesData.get(shelfId) || {};
+                const isCompleted = shelfData.completed === true;
+
+                shelf.classList.remove('highlight-search-animation', 'gaming-mode-animation');
+
+                if (appState.isGamingMode) {
+                    shelf.style.removeProperty('fill');
+                    shelf.classList.add('gaming-mode-animation');
+                } else if (shelfId === appState.searchedShelfId) {
+                    shelf.style.setProperty('fill', 'red', 'important');
+                    shelf.classList.add('highlight-search-animation');
+                } else if (shelfId === appState.selectedShelfId) {
+                    shelf.style.setProperty('fill', '#1E90FF', 'important');
+                } else if (isCompleted) {
+                    shelf.style.setProperty('fill', '#BDE0FE', 'important');
+                } else {
+                    shelf.style.setProperty('fill', '#FFFACD', 'important');
+                }
+            });
+        }
+
+        function setupMapClickListener() {
+            if (!svg) return;
+            svg.addEventListener('click', (event) => {
+                const clickedElement = event.target;
+                let shelfId = findShelfId(clickedElement);
+                if (shelfId) {
+                    handleShelfClick(shelfId);
+                }
+            });
+        }
+
+        function findShelfId(element) {
+            let current = element;
+            while (current && current !== svg) {
+                const id = current.id;
+                if (id && shelfPrefixes.some(prefix => id.startsWith(prefix + '_'))) {
+                    return id;
+                }
+                current = current.parentElement;
+            }
+            return null;
+        }
+
+        function handleShelfClick(shelfId) {
+            appState.selectedShelfId = shelfId;
+            appState.searchedShelfId = null;
+            appState.isGamingMode = false;
+            redrawMapColors();
+            updateInfoPanel(shelfId);
+        }
+
+        function updateInfoPanel(shelfId) {
+            const infoArea = document.getElementById('info-area');
+            const parts = shelfId.split('_');
+            const prefix = parts[0];
+            const shelfNumber = parts[1];
+            const displayName = shelfMasterData[prefix] ? shelfMasterData[prefix].displayName : prefix;
+
+            infoArea.innerHTML = `<h3>${displayName} ${shelfNumber}番</h3>
+                <div id="status-area"></div>
+                <ul id="product-list"></ul>
+                <div>
+                    <input type="text" id="new-product-input" placeholder="新しい商品名">
+                    <button id="add-product-btn">追加</button>
+                </div>`;
+
+            db.collection('shelves').doc(shelfId).onSnapshot(doc => {
+                const productList = document.getElementById('product-list');
+                const statusArea = document.getElementById('status-area');
+                if (!productList || !statusArea) return;
+
+                const shelfData = doc.exists ? doc.data() : {};
+                const isCompleted = shelfData.completed === true;
+                statusArea.innerHTML = isCompleted
+                    ? `<p id="shelf-status">この棚は登録済みです</p><button id="toggle-status-btn">未登録に戻す</button>`
+                    : `<p>この棚はまだ未登録です</p><button id="toggle-status-btn">登録済みにする</button>`;
+
+                document.getElementById('toggle-status-btn').onclick = () => toggleShelfStatus(shelfId, !isCompleted);
+
+                productList.innerHTML = '';
+                if (shelfData.products && shelfData.products.length > 0) {
+                    shelfData.products.forEach(productName => {
+                        const li = document.createElement('li');
+                        li.textContent = productName;
+                        const deleteBtn = document.createElement('span');
+                        deleteBtn.textContent = ' ✖';
+                        deleteBtn.className = 'delete-btn';
+                        deleteBtn.onclick = () => deleteProduct(shelfId, productName);
+                        li.appendChild(deleteBtn);
+                        productList.appendChild(li);
+                    });
+                } else {
+                    const li = document.createElement('li');
+                    li.textContent = '（まだ商品はありません）';
+                    productList.appendChild(li);
+                }
+            });
+
+            document.getElementById('add-product-btn').onclick = () => {
+                const input = document.getElementById('new-product-input');
+                if (input.value) { addProduct(shelfId, input.value); input.value = ''; }
+            };
+        }
+
+        function toggleShelfStatus(shelfId, newStatus) {
+            db.collection('shelves').doc(shelfId).set({ completed: newStatus }, { merge: true });
+        }
+
+        function addProduct(shelfId, productName) {
+            db.collection('shelves').doc(shelfId).set({ products: firebase.firestore.FieldValue.arrayUnion(productName) }, { merge: true });
+        }
+
+        function deleteProduct(shelfId, productName) {
+            db.collection('shelves').doc(shelfId).update({ products: firebase.firestore.FieldValue.arrayRemove(productName) });
+        }
+
+        function performSearch() {
+            appState.selectedShelfId = null;
+            const searchInput = document.getElementById('search-input');
+            const searchTerm = searchInput.value.trim();
+            if (!searchTerm) return;
+
+            if (searchTerm === 'ゲーミング棚') {
+                appState.isGamingMode = true;
+                appState.searchedShelfId = null;
+                log('🌈レインボー🌈');
+            } else {
+                appState.isGamingMode = false;
+                const shelfId = productLocationDatabase[searchTerm];
+                if (shelfId) {
+                    appState.searchedShelfId = shelfId;
+                    const displayName = shelfMasterData[shelfId.split('_')[0]].displayName;
+                    const shelfNumber = shelfId.split('_')[1];
+                    log(`「${searchTerm}」（${displayName} ${shelfNumber}番）の棚を赤く点滅させます。`);
+                } else {
+                    appState.searchedShelfId = null;
+                    log(`「${searchTerm}」は見つかりませんでした。`);
+                }
+            }
+            redrawMapColors();
+            searchInput.value = '';
+        }
+
+        async function exportAllDataToCsv() {
+            log('全データをエクスポートしています...');
+            try {
+                const snapshot = await db.collection('shelves').get();
+                let csvContent = "data:text/csv;charset=utf-8,";
+                csvContent += "商品名,棚ID,棚の正式名称,登録完了\r\n";
+                snapshot.forEach(doc => {
+                    const shelfId = doc.id;
+                    const data = doc.data();
+                    const prefix = shelfId.split('_')[0];
+                    const displayName = shelfMasterData[prefix] ? shelfMasterData[prefix].displayName : prefix;
+                    const isCompleted = data.completed ? 'はい' : 'いいえ';
+                    if (data.products && Array.isArray(data.products)) {
+                        data.products.forEach(productName => {
+                            csvContent += `"${productName}","${shelfId}","${displayName}","${isCompleted}"\r\n`;
+                        });
+                    }
+                });
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", "products_backup.csv");
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                log('全データのCSVエクスポートが完了しました。');
+            } catch (error) {
+                console.error("CSVエクスポートエラー:", error);
+                log('CSVのエクスポート中にエラーが発生しました。');
+            }
+        }
+        function isMobileDevice() {
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        }
+
+        let initialViewBox;
+
+        function setupMobileZoom() {
+            const zoomControls = document.getElementById('mobile-zoom-controls');
+            if (isMobileDevice() && svg) {
+                zoomControls.style.display = 'block';
+                initialViewBox = svg.getAttribute('viewBox');
+                if (!initialViewBox) {
+                    // viewBox が設定されていない場合の初期値を設定 (SVGの実際のサイズに合わせて調整が必要かもしれません)
+                    const svgWidth = svg.getAttribute('width');
+                    const svgHeight = svg.getAttribute('height');
+                    initialViewBox = `0 0 ${svgWidth || 800} ${svgHeight || 600}`;
+                    svg.setAttribute('viewBox', initialViewBox);
+                }
+            } else if (zoomControls) {
+                zoomControls.style.display = 'none';
+                if (svg && initialViewBox) {
+                    svg.setAttribute('viewBox', initialViewBox); // PCでは初期状態に戻す
+                    initialViewBox = null;
+                }
+            }
+        }
+
+        function zoomInMap(scaleFactor = 1.2) {
+            if (!svg || !initialViewBox) return;
+            const viewBoxValues = initialViewBox.split(' ').map(Number);
+            const width = viewBoxValues[2];
+            const height = viewBoxValues[3];
+            const newWidth = width / scaleFactor;
+            const newHeight = height / scaleFactor;
+            svg.setAttribute('viewBox', `${viewBoxValues[0] + (width - newWidth) / 2} ${viewBoxValues[1] + (height - newHeight) / 2} ${newWidth} ${newHeight}`);
+        }
+
+        function zoomOutMap(scaleFactor = 1.2) {
+            if (!svg || !initialViewBox) return;
+            const viewBoxValues = initialViewBox.split(' ').map(Number);
+            const width = viewBoxValues[2];
+            const height = viewBoxValues[3];
+            const newWidth = width * scaleFactor;
+            const newHeight = height * scaleFactor;
+            svg.setAttribute('viewBox', `${viewBoxValues[0] - (newWidth - width) / 2} ${viewBoxValues[1] - (newHeight - height) / 2} ${newWidth} ${newHeight}`);
+        }
+
+        function resetZoomMap() {
+            if (svg && initialViewBox) {
+                svg.setAttribute('viewBox', initialViewBox);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', setupMobileZoom);
+        let svgLoadCheckInterval = setInterval(() => {
+            if (svg) {
+                setupMobileZoom();
+                clearInterval(svgLoadCheckInterval);
+            }
+        }, 100);
+    </script>
+</body>
+
+</html>
