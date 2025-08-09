@@ -4,7 +4,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>店内商品検索</title>
+    <title>店内商品検索アプリ (Firebase版)</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/@panzoom/panzoom@4.5.1/dist/panzoom.min.js"></script>
+
     <style>
         body {
             font-family: sans-serif;
@@ -59,16 +62,19 @@
             margin-top: 10px;
         }
 
+        /* ★★★ 復活 ★★★ Pan & Zoomのためのスタイル */
         #map-wrapper {
             border: 2px solid #ccc;
             padding: 10px;
             height: 600px;
+            overflow: hidden;
+            touch-action: none;
         }
 
         #map-wrapper svg {
             width: 100%;
             height: 100%;
-            cursor: default;
+            cursor: grab;
         }
 
         .highlight-search-animation {
@@ -154,7 +160,7 @@
 </head>
 
 <body>
-    <h1>店内商品検索</h1>
+    <h1>店内商品検索アプリ</h1>
     <div id="main-container">
         <div id="left-panel">
             <div id="search-area">
@@ -162,13 +168,6 @@
                 <button id="search-button">検索</button>
             </div>
             <div id="map-wrapper"></div>
-            <div id="mobile-zoom-controls" style="display: none; margin-top: 10px; text-align: center;">
-                <button onclick="zoomInMap()" style="padding: 10px 20px; font-size: 1.2em;">拡大</button>
-                <button onclick="zoomOutMap()"
-                    style="padding: 10px 20px; font-size: 1.2em; margin-left: 10px;">縮小</button>
-                <button onclick="resetZoomMap()"
-                    style="padding: 10px 20px; font-size: 1.2em; margin-left: 10px;">リセット</button>
-            </div>
         </div>
         <div id="right-panel">
             <h2>情報パネル</h2>
@@ -185,14 +184,13 @@
 
     <script>
         const firebaseConfig = {
-            apiKey: "AIzaSyB2RWsPZwb9ZukbF8ijP9A_F3czf_q05-0",
-            authDomain: "map-app-1b118.firebaseapp.com",
-            projectId: "map-app-1b118",
-            storageBucket: "map-app-1b118.firebasestorage.app",
-            messagingSenderId: "875757738307",
-            appId: "1:875757738307:web:00865ef8281907b8e037f6"
+          apiKey: "AIzaSyB2RWsPZwb9ZukbF8ijP9A_F3czf_q05-0",
+          authDomain: "map-app-1b118.firebaseapp.com",
+          projectId: "map-app-1b118",
+          storageBucket: "map-app-1b118.firebasestorage.app",
+          messagingSenderId: "875757738307",
+          appId: "1:875757738307:web:00865ef8281907b8e037f6"
         };
-
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
         const auth = firebase.auth();
@@ -200,7 +198,7 @@
         let svg = null;
         let productLocationDatabase = {};
         const shelfMasterData = {
-            'dry': { displayName: 'お菓子・飲料・食材' }, 'delica': { displayName: 'お惣菜' },
+            'dry': { displayName: '飲料,お菓子,調味料' }, 'delica': { displayName: 'お惣菜' },
             'veg': { displayName: '野菜' }, 'dailyWa': { displayName: '日配品(和)' },
             'daylyEu': { displayName: '日配品(洋)' }, 'meat': { displayName: 'お肉' },
             'fish': { displayName: 'お魚' }, 'med': { displayName: '薬品' },
@@ -234,6 +232,13 @@
                 mapWrapper.innerHTML = await response.text();
                 svg = mapWrapper.querySelector('svg');
                 if (!svg) throw new Error('SVGタグが見つかりませんでした。');
+
+                // ★★★ 復活 ★★★ Pan & Zoom機能を有効化
+                const panzoom = Panzoom(svg, {
+                    maxScale: 10,
+                    minScale: 0.5,
+                });
+                mapWrapper.addEventListener('wheel', panzoom.zoomWithWheel);
 
                 setupRealtimeListeners();
                 setupMapClickListener();
@@ -274,6 +279,8 @@
                 const isCompleted = shelfData.completed === true;
 
                 shelf.classList.remove('highlight-search-animation', 'gaming-mode-animation');
+                shelf.style.stroke = 'black';
+                shelf.style.strokeWidth = '0.5px';
 
                 if (appState.isGamingMode) {
                     shelf.style.removeProperty('fill');
@@ -283,6 +290,8 @@
                     shelf.classList.add('highlight-search-animation');
                 } else if (shelfId === appState.selectedShelfId) {
                     shelf.style.setProperty('fill', '#1E90FF', 'important');
+                    shelf.style.stroke = '#0056b3';
+                    shelf.style.strokeWidth = '2px';
                 } else if (isCompleted) {
                     shelf.style.setProperty('fill', '#BDE0FE', 'important');
                 } else {
@@ -322,6 +331,33 @@
             updateInfoPanel(shelfId);
         }
 
+        function performSearch() {
+            appState.selectedShelfId = null;
+            const searchInput = document.getElementById('search-input');
+            const searchTerm = searchInput.value.trim();
+            if (!searchTerm) return;
+
+            if (searchTerm === 'gamingshelf' || searchTerm === 'ゲーミング棚') {
+                appState.isGamingMode = true;
+                appState.searchedShelfId = null;
+                log('✨🎉 ゲーミングモード発動！ 🎉✨');
+            } else {
+                appState.isGamingMode = false;
+                const shelfId = productLocationDatabase[searchTerm];
+                if (shelfId) {
+                    appState.searchedShelfId = shelfId;
+                    const displayName = shelfMasterData[shelfId.split('_')[0]].displayName;
+                    const shelfNumber = shelfId.split('_')[1];
+                    log(`「${searchTerm}」（${displayName} ${shelfNumber}番）の棚を赤く点滅させます。`);
+                } else {
+                    appState.searchedShelfId = null;
+                    log(`「${searchTerm}」は見つかりませんでした。`);
+                }
+            }
+            redrawMapColors();
+            searchInput.value = '';
+        }
+
         function updateInfoPanel(shelfId) {
             const infoArea = document.getElementById('info-area');
             const parts = shelfId.split('_');
@@ -329,19 +365,12 @@
             const shelfNumber = parts[1];
             const displayName = shelfMasterData[prefix] ? shelfMasterData[prefix].displayName : prefix;
 
-            infoArea.innerHTML = `<h3>${displayName} ${shelfNumber}番</h3>
-                <div id="status-area"></div>
-                <ul id="product-list"></ul>
-                <div>
-                    <input type="text" id="new-product-input" placeholder="新しい商品名">
-                    <button id="add-product-btn">追加</button>
-                </div>`;
+            infoArea.innerHTML = `<h3>${displayName} ${shelfNumber}番</h3><div id="status-area"></div><ul id="product-list"></ul><div><input type="text" id="new-product-input" placeholder="新しい商品名"><button id="add-product-btn">追加</button></div>`;
 
             db.collection('shelves').doc(shelfId).onSnapshot(doc => {
                 const productList = document.getElementById('product-list');
                 const statusArea = document.getElementById('status-area');
                 if (!productList || !statusArea) return;
-
                 const shelfData = doc.exists ? doc.data() : {};
                 const isCompleted = shelfData.completed === true;
                 statusArea.innerHTML = isCompleted
@@ -368,7 +397,6 @@
                     productList.appendChild(li);
                 }
             });
-
             document.getElementById('add-product-btn').onclick = () => {
                 const input = document.getElementById('new-product-input');
                 if (input.value) { addProduct(shelfId, input.value); input.value = ''; }
@@ -378,42 +406,12 @@
         function toggleShelfStatus(shelfId, newStatus) {
             db.collection('shelves').doc(shelfId).set({ completed: newStatus }, { merge: true });
         }
-
         function addProduct(shelfId, productName) {
             db.collection('shelves').doc(shelfId).set({ products: firebase.firestore.FieldValue.arrayUnion(productName) }, { merge: true });
         }
-
         function deleteProduct(shelfId, productName) {
             db.collection('shelves').doc(shelfId).update({ products: firebase.firestore.FieldValue.arrayRemove(productName) });
         }
-
-        function performSearch() {
-            appState.selectedShelfId = null;
-            const searchInput = document.getElementById('search-input');
-            const searchTerm = searchInput.value.trim();
-            if (!searchTerm) return;
-
-            if (searchTerm === 'ゲーミング棚') {
-                appState.isGamingMode = true;
-                appState.searchedShelfId = null;
-                log('🌈レインボー🌈');
-            } else {
-                appState.isGamingMode = false;
-                const shelfId = productLocationDatabase[searchTerm];
-                if (shelfId) {
-                    appState.searchedShelfId = shelfId;
-                    const displayName = shelfMasterData[shelfId.split('_')[0]].displayName;
-                    const shelfNumber = shelfId.split('_')[1];
-                    log(`「${searchTerm}」（${displayName} ${shelfNumber}番）の棚を赤く点滅させます。`);
-                } else {
-                    appState.searchedShelfId = null;
-                    log(`「${searchTerm}」は見つかりませんでした。`);
-                }
-            }
-            redrawMapColors();
-            searchInput.value = '';
-        }
-
         async function exportAllDataToCsv() {
             log('全データをエクスポートしています...');
             try {
@@ -445,66 +443,6 @@
                 log('CSVのエクスポート中にエラーが発生しました。');
             }
         }
-        function isMobileDevice() {
-            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        }
-
-        let initialViewBox;
-
-        function setupMobileZoom() {
-            const zoomControls = document.getElementById('mobile-zoom-controls');
-            if (isMobileDevice() && svg) {
-                zoomControls.style.display = 'block';
-                initialViewBox = svg.getAttribute('viewBox');
-                if (!initialViewBox) {
-                    // viewBox が設定されていない場合の初期値を設定 (SVGの実際のサイズに合わせて調整が必要かもしれません)
-                    const svgWidth = svg.getAttribute('width');
-                    const svgHeight = svg.getAttribute('height');
-                    initialViewBox = `0 0 ${svgWidth || 800} ${svgHeight || 600}`;
-                    svg.setAttribute('viewBox', initialViewBox);
-                }
-            } else if (zoomControls) {
-                zoomControls.style.display = 'none';
-                if (svg && initialViewBox) {
-                    svg.setAttribute('viewBox', initialViewBox); // PCでは初期状態に戻す
-                    initialViewBox = null;
-                }
-            }
-        }
-
-        function zoomInMap(scaleFactor = 1.2) {
-            if (!svg || !initialViewBox) return;
-            const viewBoxValues = initialViewBox.split(' ').map(Number);
-            const width = viewBoxValues[2];
-            const height = viewBoxValues[3];
-            const newWidth = width / scaleFactor;
-            const newHeight = height / scaleFactor;
-            svg.setAttribute('viewBox', `${viewBoxValues[0] + (width - newWidth) / 2} ${viewBoxValues[1] + (height - newHeight) / 2} ${newWidth} ${newHeight}`);
-        }
-
-        function zoomOutMap(scaleFactor = 1.2) {
-            if (!svg || !initialViewBox) return;
-            const viewBoxValues = initialViewBox.split(' ').map(Number);
-            const width = viewBoxValues[2];
-            const height = viewBoxValues[3];
-            const newWidth = width * scaleFactor;
-            const newHeight = height * scaleFactor;
-            svg.setAttribute('viewBox', `${viewBoxValues[0] - (newWidth - width) / 2} ${viewBoxValues[1] - (newHeight - height) / 2} ${newWidth} ${newHeight}`);
-        }
-
-        function resetZoomMap() {
-            if (svg && initialViewBox) {
-                svg.setAttribute('viewBox', initialViewBox);
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', setupMobileZoom);
-        let svgLoadCheckInterval = setInterval(() => {
-            if (svg) {
-                setupMobileZoom();
-                clearInterval(svgLoadCheckInterval);
-            }
-        }, 100);
     </script>
 </body>
 
