@@ -5,13 +5,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>店内商品検索アプリ (Firebase版)</title>
-
     <script src="https://cdn.jsdelivr.net/npm/@panzoom/panzoom@4.5.1/dist/panzoom.min.js"></script>
-
     <style>
         body {
             font-family: sans-serif;
             margin: 20px;
+        }
+
+        #header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         #main-container {
@@ -21,6 +25,7 @@
 
         #left-panel {
             flex: 1;
+            transition: width 0.3s ease-in-out;
         }
 
         #right-panel {
@@ -28,20 +33,42 @@
             border: 2px solid #17a2b8;
             background-color: #f0f8ff;
             padding: 15px;
+            overflow: hidden;
+            white-space: nowrap;
+            transition: width 0.3s ease-in-out, padding 0.3s ease-in-out, border 0.3s ease-in-out;
         }
 
-        #search-area {
+        #right-panel.hidden {
+            width: 0;
+            padding: 0;
+            border-width: 0;
+        }
+
+        #panel-toggle-btn {
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+
+        #panel-content.hidden {
+            display: none;
+        }
+
+        #search-area,
+        #mode-switcher {
             margin-bottom: 15px;
         }
 
-        #search-input {
+        #search-input,
+        .product-input {
             padding: 8px;
             font-size: 16px;
             border: 1px solid #ccc;
             border-radius: 4px;
+            width: 80%;
         }
 
-        #search-button {
+        #search-button,
+        .add-btn {
             padding: 8px 12px;
             font-size: 16px;
             background-color: #007bff;
@@ -62,7 +89,6 @@
             margin-top: 10px;
         }
 
-        /* ★★★ 復活 ★★★ Pan & Zoomのためのスタイル */
         #map-wrapper {
             border: 2px solid #ccc;
             padding: 10px;
@@ -77,7 +103,25 @@
             cursor: grab;
         }
 
-        .highlight-search-animation {
+        #mode-switcher label {
+            font-weight: bold;
+            user-select: none;
+        }
+
+        .selected {
+            fill: #1E90FF !important;
+            stroke: #0056b3 !important;
+            stroke-width: 2px !important;
+        }
+
+        .multi-selected {
+            fill: #FFA500 !important;
+            stroke: #A06800 !important;
+            stroke-width: 2px !important;
+        }
+
+        .highlight-search {
+            fill: red !important;
             animation: blink-animation 1.2s infinite;
         }
 
@@ -93,10 +137,8 @@
             }
         }
 
-        .gaming-mode-animation {
-            animation-name: rainbow-animation;
-            animation-duration: 3s;
-            animation-iteration-count: infinite;
+        .gaming-mode {
+            animation: rainbow-animation 3s infinite;
         }
 
         @keyframes rainbow-animation {
@@ -126,55 +168,35 @@
                 fill: blue;
             }
         }
-
-        #product-list li {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .delete-btn {
-            cursor: pointer;
-            color: red;
-        }
-
-        #status-area {
-            margin-top: 15px;
-            margin-bottom: 15px;
-            padding: 10px;
-            border: 1px dashed #ccc;
-            text-align: center;
-        }
-
-        #toggle-status-btn {
-            padding: 8px;
-            cursor: pointer;
-            width: 100%;
-        }
-
-        #shelf-status {
-            font-weight: bold;
-            color: green;
-        }
     </style>
 </head>
 
 <body>
-    <h1>店内商品検索アプリ</h1>
+    <div id="header">
+        <h1>店内商品検索アプリ (Firebase版)</h1>
+        <div id="panel-toggle-area">
+            <button id="panel-toggle-btn">パネルを開く</button>
+        </div>
+    </div>
     <div id="main-container">
         <div id="left-panel">
             <div id="search-area">
                 <input type="text" id="search-input" placeholder="商品名を入力">
                 <button id="search-button">検索</button>
             </div>
+            <div id="mode-switcher">
+                <label><input type="checkbox" id="multi-select-mode"> 複数選択モード</label>
+            </div>
             <div id="map-wrapper"></div>
         </div>
-        <div id="right-panel">
-            <h2>情報パネル</h2>
-            <div id="info-area">
-                <p>アプリを起動しています...</p>
+        <div id="right-panel" class="hidden">
+            <div id="panel-content" class="hidden">
+                <h2>商品登録パネル</h2>
+                <div id="info-area">
+                    <p>アプリを起動しています...</p>
+                </div>
+                <button id="export-csv-btn">全データをCSVで保存</button>
             </div>
-            <button id="export-csv-btn">全データをCSVで保存</button>
         </div>
     </div>
 
@@ -184,12 +206,12 @@
 
     <script>
         const firebaseConfig = {
-          apiKey: "AIzaSyB2RWsPZwb9ZukbF8ijP9A_F3czf_q05-0",
-          authDomain: "map-app-1b118.firebaseapp.com",
-          projectId: "map-app-1b118",
-          storageBucket: "map-app-1b118.firebasestorage.app",
-          messagingSenderId: "875757738307",
-          appId: "1:875757738307:web:00865ef8281907b8e037f6"
+            apiKey: "AIzaSyB2RWsPZwb9ZukbF8ijP9A_F3czf_q05-0",
+            authDomain: "map-app-1b118.firebaseapp.com",
+            projectId: "map-app-1b118",
+            storageBucket: "map-app-1b118.firebasestorage.app",
+            messagingSenderId: "875757738307",
+            appId: "1:875757738307:web:00865ef8281907b8e037f6"
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
@@ -198,22 +220,16 @@
         let svg = null;
         let productLocationDatabase = {};
         const shelfMasterData = {
-            'dry': { displayName: '飲料,お菓子,調味料' }, 'delica': { displayName: 'お惣菜' },
-            'veg': { displayName: '野菜' }, 'dailyWa': { displayName: '日配品(和)' },
-            'daylyEu': { displayName: '日配品(洋)' }, 'meat': { displayName: 'お肉' },
-            'fish': { displayName: 'お魚' }, 'med': { displayName: '薬品' },
-            'bread': { displayName: 'パン' }, 'froz': { displayName: '冷凍食品' },
-            'combat': { displayName: '殺虫剤・日用品' }, 'garden': { displayName: '園芸用品' },
-            'book': { displayName: '書籍' }
+            'dry': { displayName: '飲料,お菓子,調味料' }, 'delica': { displayName: 'お惣菜' }, 'veg': { displayName: '野菜' },
+            'dailyWa': { displayName: '日配品(和)' }, 'daylyEu': { displayName: '日配品(洋)' }, 'meat': { displayName: 'お肉' },
+            'fish': { displayName: 'お魚' }, 'med': { displayName: '薬品' }, 'bread': { displayName: 'パン' },
+            'froz': { displayName: '冷凍食品' }, 'combat': { displayName: '殺虫剤・日用品' }, 'garden': { displayName: '園芸用品' }, 'book': { displayName: '書籍' }
         };
         const shelfPrefixes = Object.keys(shelfMasterData);
         const shelfSelector = shelfPrefixes.map(p => `[id^="${p}_"]`).join(', ');
-
         let appState = {
-            shelvesData: new Map(),
-            selectedShelfId: null,
-            searchedShelfId: null,
-            isGamingMode: false
+            shelvesData: new Map(), selectedShelfId: null, searchedShelfId: null,
+            isGamingMode: false, isMultiSelectMode: false, multiSelectedShelves: new Set()
         };
 
         const log = (message) => { document.getElementById('info-area').innerHTML = `<p>${message}</p>`; };
@@ -221,7 +237,30 @@
         document.addEventListener('DOMContentLoaded', async () => {
             await initializeApp();
             document.getElementById('export-csv-btn').addEventListener('click', exportAllDataToCsv);
+            document.getElementById('multi-select-mode').addEventListener('change', (e) => {
+                appState.isMultiSelectMode = e.target.checked; appState.selectedShelfId = null;
+                appState.multiSelectedShelves.clear(); redrawMapColors(); updateInfoPanel();
+            });
+            // ★★★ 修正点 ★★★ ボタンの場所が変わっても、機能は同じ
+            document.getElementById('panel-toggle-btn').addEventListener('click', togglePanel);
         });
+
+        function togglePanel() {
+            const rightPanel = document.getElementById('right-panel');
+            const panelContent = document.getElementById('panel-content');
+            const toggleBtn = document.getElementById('panel-toggle-btn');
+            rightPanel.classList.toggle('hidden');
+            // 少し遅れてコンテンツを表示・非表示にすることで、なめらかなアニメーションに見せる
+            if (rightPanel.classList.contains('hidden')) {
+                panelContent.classList.add('hidden');
+                toggleBtn.textContent = 'パネルを開く';
+            } else {
+                setTimeout(() => {
+                    panelContent.classList.remove('hidden');
+                }, 150); // 0.15秒後
+                toggleBtn.textContent = 'パネルを閉じる';
+            }
+        }
 
         async function initializeApp() {
             try {
@@ -233,23 +272,15 @@
                 svg = mapWrapper.querySelector('svg');
                 if (!svg) throw new Error('SVGタグが見つかりませんでした。');
 
-                // ★★★ 復活 ★★★ Pan & Zoom機能を有効化
-                const panzoom = Panzoom(svg, {
-                    maxScale: 10,
-                    minScale: 0.5,
-                });
+             const panzoom = Panzoom(svg, { maxScale: 10, minScale: 0.5, contain: 'outside' });
                 mapWrapper.addEventListener('wheel', panzoom.zoomWithWheel);
 
                 setupRealtimeListeners();
                 setupMapClickListener();
 
                 document.getElementById('search-button').addEventListener('click', performSearch);
-                document.getElementById('search-input').addEventListener('keyup', (e) => {
-                    if (e.key === 'Enter') performSearch();
-                });
-            } catch (error) {
-                log(`初期化エラー: ${error.message}`);
-            }
+                document.getElementById('search-input').addEventListener('keyup', (e) => { if (e.key === 'Enter') performSearch(); });
+            } catch (error) { log(`初期化エラー: ${error.message}`); }
         }
 
         function setupRealtimeListeners() {
@@ -259,9 +290,7 @@
                     appState.shelvesData.set(doc.id, doc.data());
                     const data = doc.data();
                     if (data.products && Array.isArray(data.products)) {
-                        data.products.forEach(productName => {
-                            productLocationDatabase[productName] = doc.id;
-                        });
+                        data.products.forEach(productName => { productLocationDatabase[productName] = doc.id; });
                     }
                 });
                 redrawMapColors();
@@ -272,26 +301,20 @@
         function redrawMapColors() {
             if (!svg) return;
             const allShelves = svg.querySelectorAll(shelfSelector);
-
             allShelves.forEach(shelf => {
                 const shelfId = shelf.id;
                 const shelfData = appState.shelvesData.get(shelfId) || {};
                 const isCompleted = shelfData.completed === true;
-
-                shelf.classList.remove('highlight-search-animation', 'gaming-mode-animation');
-                shelf.style.stroke = 'black';
-                shelf.style.strokeWidth = '0.5px';
-
+                shelf.classList.remove('highlight-search', 'gaming-mode', 'selected', 'multi-selected');
+                shelf.style.stroke = 'black'; shelf.style.strokeWidth = '0.5px';
                 if (appState.isGamingMode) {
-                    shelf.style.removeProperty('fill');
-                    shelf.classList.add('gaming-mode-animation');
+                    shelf.style.removeProperty('fill'); shelf.classList.add('gaming-mode');
                 } else if (shelfId === appState.searchedShelfId) {
-                    shelf.style.setProperty('fill', 'red', 'important');
-                    shelf.classList.add('highlight-search-animation');
+                    shelf.style.setProperty('fill', 'red', 'important'); shelf.classList.add('highlight-search');
+                } else if (appState.isMultiSelectMode && appState.multiSelectedShelves.has(shelfId)) {
+                    shelf.classList.add('multi-selected');
                 } else if (shelfId === appState.selectedShelfId) {
-                    shelf.style.setProperty('fill', '#1E90FF', 'important');
-                    shelf.style.stroke = '#0056b3';
-                    shelf.style.strokeWidth = '2px';
+                    shelf.classList.add('selected');
                 } else if (isCompleted) {
                     shelf.style.setProperty('fill', '#BDE0FE', 'important');
                 } else {
@@ -306,7 +329,8 @@
                 const clickedElement = event.target;
                 let shelfId = findShelfId(clickedElement);
                 if (shelfId) {
-                    handleShelfClick(shelfId);
+                    if (appState.isMultiSelectMode) { handleMultiSelectClick(shelfId); }
+                    else { handleSingleSelectClick(shelfId); }
                 }
             });
         }
@@ -315,32 +339,31 @@
             let current = element;
             while (current && current !== svg) {
                 const id = current.id;
-                if (id && shelfPrefixes.some(prefix => id.startsWith(prefix + '_'))) {
-                    return id;
-                }
+                if (id && shelfPrefixes.some(prefix => id.startsWith(prefix + '_'))) { return id; }
                 current = current.parentElement;
             }
             return null;
         }
 
-        function handleShelfClick(shelfId) {
-            appState.selectedShelfId = shelfId;
-            appState.searchedShelfId = null;
-            appState.isGamingMode = false;
-            redrawMapColors();
-            updateInfoPanel(shelfId);
+        function handleSingleSelectClick(shelfId) {
+            appState.selectedShelfId = (appState.selectedShelfId === shelfId) ? null : shelfId;
+            appState.searchedShelfId = null; appState.isGamingMode = false;
+            redrawMapColors(); updateInfoPanel();
+        }
+
+        function handleMultiSelectClick(shelfId) {
+            if (appState.multiSelectedShelves.has(shelfId)) { appState.multiSelectedShelves.delete(shelfId); }
+            else { appState.multiSelectedShelves.add(shelfId); }
+            redrawMapColors(); updateInfoPanel();
         }
 
         function performSearch() {
-            appState.selectedShelfId = null;
+            appState.selectedShelfId = null; appState.multiSelectedShelves.clear();
             const searchInput = document.getElementById('search-input');
             const searchTerm = searchInput.value.trim();
-            if (!searchTerm) return;
-
-            if (searchTerm === 'gamingshelf' || searchTerm === 'ゲーミング棚') {
-                appState.isGamingMode = true;
-                appState.searchedShelfId = null;
-                log('✨🎉 ゲーミングモード発動！ 🎉✨');
+            if (!searchTerm) { redrawMapColors(); return; }
+            if (searchTerm === 'ゲーミング棚' || searchTerm === 'gamingshelf') {
+                appState.isGamingMode = true; appState.searchedShelfId = null; log('✨🎉 ゲーミングモード発動！ 🎉✨');
             } else {
                 appState.isGamingMode = false;
                 const shelfId = productLocationDatabase[searchTerm];
@@ -348,69 +371,88 @@
                     appState.searchedShelfId = shelfId;
                     const displayName = shelfMasterData[shelfId.split('_')[0]].displayName;
                     const shelfNumber = shelfId.split('_')[1];
-                    log(`「${searchTerm}」（${displayName} ${shelfNumber}番）の棚を赤く点滅させます。`);
+                    log(`「${searchTerm}」（${displayName} ${shelfNumber}番）をハイライトします。`);
                 } else {
-                    appState.searchedShelfId = null;
-                    log(`「${searchTerm}」は見つかりませんでした。`);
+                    appState.searchedShelfId = null; log(`「${searchTerm}」は見つかりませんでした。`);
                 }
             }
-            redrawMapColors();
-            searchInput.value = '';
+            redrawMapColors(); searchInput.value = '';
         }
 
-        function updateInfoPanel(shelfId) {
+        function updateInfoPanel() {
+            if (appState.isMultiSelectMode) { updateInfoPanelForMultiSelect(); }
+            else if (appState.selectedShelfId) { updateInfoPanelForSingleSelect(appState.selectedShelfId); }
+            else { document.getElementById('info-area').innerHTML = `<p>棚をクリックして商品を編集・確認できます。</p>`; }
+        }
+
+        function updateInfoPanelForSingleSelect(shelfId) {
             const infoArea = document.getElementById('info-area');
             const parts = shelfId.split('_');
             const prefix = parts[0];
             const shelfNumber = parts[1];
             const displayName = shelfMasterData[prefix] ? shelfMasterData[prefix].displayName : prefix;
-
-            infoArea.innerHTML = `<h3>${displayName} ${shelfNumber}番</h3><div id="status-area"></div><ul id="product-list"></ul><div><input type="text" id="new-product-input" placeholder="新しい商品名"><button id="add-product-btn">追加</button></div>`;
-
+            infoArea.innerHTML = `<h3>${displayName} ${shelfNumber}番</h3><div id="status-area"></div><ul id="product-list"></ul><div><input type="text" class="product-input" id="new-product-input" placeholder="りんご、ばなな..."><button class="add-btn" id="add-product-btn">追加</button></div>`;
+            document.getElementById('add-product-btn').onclick = () => {
+                const input = document.getElementById('new-product-input');
+                if (input.value) { addProductsToShelves([shelfId], input.value); input.value = ''; }
+            };
             db.collection('shelves').doc(shelfId).onSnapshot(doc => {
                 const productList = document.getElementById('product-list');
                 const statusArea = document.getElementById('status-area');
                 if (!productList || !statusArea) return;
                 const shelfData = doc.exists ? doc.data() : {};
                 const isCompleted = shelfData.completed === true;
-                statusArea.innerHTML = isCompleted
-                    ? `<p id="shelf-status">この棚は登録済みです</p><button id="toggle-status-btn">未登録に戻す</button>`
-                    : `<p>この棚はまだ未登録です</p><button id="toggle-status-btn">登録済みにする</button>`;
-
+                statusArea.innerHTML = isCompleted ? `<p id="shelf-status">この棚は登録済みです</p><button id="toggle-status-btn">未登録に戻す</button>` : `<p>この棚はまだ未登録です</p><button id="toggle-status-btn">登録済みにする</button>`;
                 document.getElementById('toggle-status-btn').onclick = () => toggleShelfStatus(shelfId, !isCompleted);
-
                 productList.innerHTML = '';
                 if (shelfData.products && shelfData.products.length > 0) {
                     shelfData.products.forEach(productName => {
                         const li = document.createElement('li');
                         li.textContent = productName;
                         const deleteBtn = document.createElement('span');
-                        deleteBtn.textContent = ' ✖';
-                        deleteBtn.className = 'delete-btn';
+                        deleteBtn.textContent = ' ✖'; deleteBtn.className = 'delete-btn';
                         deleteBtn.onclick = () => deleteProduct(shelfId, productName);
-                        li.appendChild(deleteBtn);
-                        productList.appendChild(li);
+                        li.appendChild(deleteBtn); productList.appendChild(li);
                     });
                 } else {
                     const li = document.createElement('li');
-                    li.textContent = '（まだ商品はありません）';
-                    productList.appendChild(li);
+                    li.textContent = '（まだ商品はありません）'; productList.appendChild(li);
                 }
             });
-            document.getElementById('add-product-btn').onclick = () => {
-                const input = document.getElementById('new-product-input');
-                if (input.value) { addProduct(shelfId, input.value); input.value = ''; }
+        }
+
+        function updateInfoPanelForMultiSelect() {
+            const infoArea = document.getElementById('info-area');
+            const selectedCount = appState.multiSelectedShelves.size;
+            let selectedShelvesHtml = '';
+            appState.multiSelectedShelves.forEach(shelfId => {
+                const parts = shelfId.split('_');
+                const displayName = shelfMasterData[parts[0]] ? shelfMasterData[parts[0]].displayName : parts[0];
+                selectedShelvesHtml += `<li>${displayName} ${parts[1]}番</li>`;
+            });
+            infoArea.innerHTML = `<h3>複数選択モード</h3><p>${selectedCount}個の棚を選択中</p><ul>${selectedShelvesHtml}</ul><div><input type="text" class="product-input" id="new-products-input" placeholder="りんご、ばなな..."><button class="add-btn" id="add-products-btn">選択中の棚に追加</button></div>`;
+            document.getElementById('add-products-btn').onclick = () => {
+                const input = document.getElementById('new-products-input');
+                if (input.value) { addProductsToShelves(Array.from(appState.multiSelectedShelves), input.value); input.value = ''; }
             };
         }
 
-        function toggleShelfStatus(shelfId, newStatus) {
-            db.collection('shelves').doc(shelfId).set({ completed: newStatus }, { merge: true });
+        function addProductsToShelves(shelfIds, productsString) {
+            const normalizedString = productsString.replace(/、/g, ',');
+            const productNames = normalizedString.split(',').map(name => name.trim()).filter(name => name);
+            if (productNames.length === 0 || shelfIds.length === 0) return;
+            shelfIds.forEach(shelfId => {
+                db.collection('shelves').doc(shelfId).set({
+                    products: firebase.firestore.FieldValue.arrayUnion(...productNames)
+                }, { merge: true });
+            });
         }
-        function addProduct(shelfId, productName) {
-            db.collection('shelves').doc(shelfId).set({ products: firebase.firestore.FieldValue.arrayUnion(productName) }, { merge: true });
-        }
+
         function deleteProduct(shelfId, productName) {
             db.collection('shelves').doc(shelfId).update({ products: firebase.firestore.FieldValue.arrayRemove(productName) });
+        }
+        function toggleShelfStatus(shelfId, newStatus) {
+            db.collection('shelves').doc(shelfId).set({ completed: newStatus }, { merge: true });
         }
         async function exportAllDataToCsv() {
             log('全データをエクスポートしています...');
@@ -438,10 +480,7 @@
                 link.click();
                 document.body.removeChild(link);
                 log('全データのCSVエクスポートが完了しました。');
-            } catch (error) {
-                console.error("CSVエクスポートエラー:", error);
-                log('CSVのエクスポート中にエラーが発生しました。');
-            }
+            } catch (error) { console.error("CSVエクスポートエラー:", error); log('CSVのエクスポート中にエラーが発生しました。'); }
         }
     </script>
 </body>
